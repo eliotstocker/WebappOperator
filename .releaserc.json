@@ -1,0 +1,41 @@
+{
+  "branches": [
+    "main"
+  ],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md"
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "./scripts/update-version.sh ${nextRelease.version}",
+        "publishCmd": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/$GITHUB_REPOSITORY:${nextRelease.version} -t ghcr.io/$GITHUB_REPOSITORY:latest --push ."
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "CHANGELOG.md",
+          "internal/version/version.go",
+          "charts/webapp-operator/Chart.yaml"
+        ],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "successComment": ":tada: This issue has been resolved in version ${nextRelease.version} :tada:",
+        "labels": false,
+        "releasedLabels": false
+      }
+    ]
+  ]
+}

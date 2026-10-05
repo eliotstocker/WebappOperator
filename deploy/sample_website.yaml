@@ -1,0 +1,25 @@
+apiVersion: webapp.io/v1alpha1
+kind: Website
+metadata:
+  name: storefront-sample
+  namespace: default
+spec:
+  image: ghcr.io/org/storefront:v1.2.0
+  hostnames:
+    - "store.example.com"
+  env:
+    API_URL: "https://api.example.com"
+    ENVIRONMENT: "production"
+  injection:
+    mode: "endpoint"
+    path: "/_config.js"
+  revisionHistoryLimit: 3
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    tls:
+      - hosts:
+          - "store.example.com"
+        secretName: "store-tls-cert"

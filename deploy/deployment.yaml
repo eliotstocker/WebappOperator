@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/name: webapp-operator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: webapp-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: webapp-operator
+    spec:
+      serviceAccountName: webapp-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: operator
+          image: ghcr.io/eliotstocker/webapp-operator:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--leader-elect=true"
+            - "--service-name=webapp-operator"
+            - "--service-port=80"
+            - "--cache-dir=/var/cache/webapp-operator"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          volumeMounts:
+            - name: cache-volume
+              mountPath: /var/cache/webapp-operator
+      volumes:
+        - name: cache-volume
+          emptyDir: {}

@@ -1,0 +1,116 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: websiterevisions.webapp.io
+spec:
+  group: webapp.io
+  names:
+    kind: WebsiteRevision
+    listKind: WebsiteRevisionList
+    plural: websiterevisions
+    singular: websiterevision
+    shortNames:
+      - webrev
+      - revs
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Website
+          type: string
+          jsonPath: .spec.websiteName
+        - name: Image
+          type: string
+          jsonPath: .spec.image
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Ready Pods
+          type: string
+          jsonPath: .status.readyPods
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - websiteName
+                - image
+              properties:
+                websiteName:
+                  type: string
+                image:
+                  type: string
+                digest:
+                  type: string
+                env:
+                  type: object
+                  additionalProperties:
+                    type: string
+                injection:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                    path:
+                      type: string
+                imagePullSecrets:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                    properties:
+                      name:
+                        type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                readyPods:
+                  type: array
+                  items:
+                    type: string
+                unpackedSize:
+                  type: integer
+                  format: int64
+                observedGeneration:
+                  type: integer
+                  format: int64
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                      - message
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

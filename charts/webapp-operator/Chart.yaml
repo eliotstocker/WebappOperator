@@ -1,0 +1,19 @@
+apiVersion: v2
+name: webapp-operator
+description: Kubernetes-Native Single Page Application (SPA) Serving Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - operator
+  - spa
+  - static-hosting
+  - oci
+  - gitops
+home: https://github.com/eliotstocker/webapp-operator
+sources:
+  - https://github.com/eliotstocker/webapp-operator
+maintainers:
+  - name: Eliot Stocker
+    email: eliot@piratemedia.tv
