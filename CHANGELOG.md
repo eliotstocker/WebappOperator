@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/eliotstocker/WebappOperator/compare/v1.0.1...v1.1.0) (2026-10-06)
+
+
+### Features
+
+* add version checking + tidy docs a bit ([aa315f7](https://github.com/eliotstocker/WebappOperator/commit/aa315f7667ae574bdf435e2ff3f61925eae69213))
+
 ## [1.0.1](https://github.com/eliotstocker/WebappOperator/compare/v1.0.0...v1.0.1) (2026-10-05)
 
 
