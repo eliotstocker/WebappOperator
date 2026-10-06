@@ -28,6 +28,54 @@ type InjectionSpec struct {
 	// +kubebuilder:default="/_config.js"
 	// +optional
 	Path string `json:"path,omitempty"`
+
+	// VersionPath is the URL path for the active version endpoint. Default is "/_version".
+	// +kubebuilder:default="/_version"
+	// +optional
+	VersionPath string `json:"versionPath,omitempty"`
+
+	// VersionPolling controls whether client applications automatically poll for new deployed versions.
+	// Defaults to true.
+	// +kubebuilder:default=true
+	// +optional
+	VersionPolling *bool `json:"versionPolling,omitempty"`
+
+	// PollIntervalSeconds configures how often (in seconds) the client app checks for new deployed versions.
+	// Defaults to 30.
+	// +kubebuilder:default=30
+	// +optional
+	PollIntervalSeconds *int32 `json:"pollIntervalSeconds,omitempty"`
+}
+
+// GetVersionPath returns the configured version endpoint path, defaulting to "/_version".
+func (s *InjectionSpec) GetVersionPath() string {
+	if s.VersionPath != "" {
+		return s.VersionPath
+	}
+	return "/_version"
+}
+
+// IsVersionPollingEnabled reports whether version polling is active.
+// It defaults to true unless explicitly disabled via VersionPolling: false or PollIntervalSeconds <= 0.
+func (s *InjectionSpec) IsVersionPollingEnabled() bool {
+	if s.VersionPolling != nil && !*s.VersionPolling {
+		return false
+	}
+	if s.PollIntervalSeconds != nil && *s.PollIntervalSeconds <= 0 {
+		return false
+	}
+	return true
+}
+
+// GetPollIntervalSeconds returns the effective polling interval in seconds, or 0 if disabled.
+func (s *InjectionSpec) GetPollIntervalSeconds() int32 {
+	if !s.IsVersionPollingEnabled() {
+		return 0
+	}
+	if s.PollIntervalSeconds != nil && *s.PollIntervalSeconds > 0 {
+		return *s.PollIntervalSeconds
+	}
+	return 30
 }
 
 // IngressSpec defines optional automated Ingress reconciliation

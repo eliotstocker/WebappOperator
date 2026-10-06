@@ -5,10 +5,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -16,6 +19,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -40,6 +44,7 @@ func init() {
 	utilruntime.Must(networkingv1.AddToScheme(scheme))
 	utilruntime.Must(discoveryv1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(coordinationv1.AddToScheme(scheme))
 }
 
 func main() {
@@ -162,6 +167,33 @@ func main() {
 		OperatorNamespace: operatorNamespace,
 		ServiceName:       serviceName,
 		IsLeader:          isLeaderAtomic.Load,
+		GetLeaderAddress: func(ctx context.Context) (string, error) {
+			var lease coordinationv1.Lease
+			if err := mgr.GetClient().Get(ctx, client.ObjectKey{Namespace: operatorNamespace, Name: "webapp-operator-leader.webapp.io"}, &lease); err != nil {
+				return "", err
+			}
+			if lease.Spec.HolderIdentity == nil {
+				return "", fmt.Errorf("no leader elected")
+			}
+			leaderPod := strings.Split(*lease.Spec.HolderIdentity, "_")[0]
+
+			var epList discoveryv1.EndpointSliceList
+			listOpts := []client.ListOption{client.InNamespace(operatorNamespace)}
+			if serviceName != "" {
+				listOpts = append(listOpts, client.MatchingLabels{discoveryv1.LabelServiceName: serviceName})
+			}
+			if err := mgr.GetClient().List(ctx, &epList, listOpts...); err != nil {
+				return "", err
+			}
+			for _, slice := range epList.Items {
+				for _, ep := range slice.Endpoints {
+					if ep.TargetRef != nil && ep.TargetRef.Name == leaderPod && len(ep.Addresses) > 0 {
+						return net.JoinHostPort(ep.Addresses[0], "8080"), nil
+					}
+				}
+			}
+			return "", fmt.Errorf("leader pod %q not found in EndpointSlices", leaderPod)
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebsiteRevision")
 		os.Exit(1)

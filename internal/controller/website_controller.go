@@ -123,12 +123,16 @@ func (r *WebsiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// 6. Update router if active revision exists
 	if website.Status.ActiveRevision != "" && r.Router != nil {
 		target := server.RouteTarget{
-			Namespace:     website.Namespace,
-			WebsiteName:   website.Name,
-			RevisionName:  website.Status.ActiveRevision,
-			Env:           website.Spec.Env,
-			InjectionMode: string(website.Spec.Injection.Mode),
-			ConfigPath:    website.Spec.Injection.Path,
+			Namespace:           website.Namespace,
+			WebsiteName:         website.Name,
+			RevisionName:        website.Status.ActiveRevision,
+			Image:               website.Status.ActiveImage,
+			Env:                 website.Spec.Env,
+			InjectionMode:       string(website.Spec.Injection.Mode),
+			ConfigPath:          website.Spec.Injection.Path,
+			VersionPath:         website.Spec.Injection.GetVersionPath(),
+			DisablePolling:      !website.Spec.Injection.IsVersionPollingEnabled(),
+			PollIntervalSeconds: website.Spec.Injection.GetPollIntervalSeconds(),
 		}
 		r.Router.SetWebsiteRoutes(website.Spec.Hostnames, target)
 	}

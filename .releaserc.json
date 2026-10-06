@@ -32,7 +32,7 @@
     [
       "@semantic-release/github",
       {
-        "successComment": ":tada: This issue has been resolved in version ${nextRelease.version} :tada:",
+        "successComment": "This issue has been resolved in version ${nextRelease.version}",
         "labels": false,
         "releasedLabels": false
       }

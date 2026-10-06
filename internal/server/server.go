@@ -2,6 +2,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,12 +16,33 @@ import (
 
 // RouteTarget holds the active serving parameters for a website.
 type RouteTarget struct {
-	Namespace     string
-	WebsiteName   string
-	RevisionName  string
-	Env           map[string]string
-	InjectionMode string
-	ConfigPath    string
+	Namespace           string
+	WebsiteName         string
+	RevisionName        string
+	Image               string
+	Env                 map[string]string
+	InjectionMode       string
+	ConfigPath          string
+	VersionPath         string
+	DisablePolling      bool
+	PollIntervalSeconds int32
+}
+
+// EffectivePollInterval returns the effective polling interval in seconds.
+// It defaults to 30 seconds unless explicitly disabled.
+func (t *RouteTarget) EffectivePollInterval() int32 {
+	if t.DisablePolling {
+		return 0
+	}
+	if t.PollIntervalSeconds > 0 {
+		return t.PollIntervalSeconds
+	}
+	return 30
+}
+
+// EffectiveVersionPath returns the configured version endpoint path, defaulting to "/_version".
+func (t *RouteTarget) EffectiveVersionPath() string {
+	return injection.CleanVersionPath(t.VersionPath)
 }
 
 // Router maintains the mapping from Host header to RouteTarget.
@@ -74,10 +96,12 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	configPath := injection.CleanPath(target.ConfigPath)
+	versionPath := target.EffectiveVersionPath()
+	pollInterval := target.EffectivePollInterval()
 
 	// 1. Dynamic Config Endpoint (/_config.js)
 	if (target.InjectionMode == "endpoint" || target.InjectionMode == "both" || target.InjectionMode == "") && r.URL.Path == configPath {
-		js, err := injection.GenerateConfigJS(target.Env)
+		js, err := injection.GenerateConfigJS(target.Env, target.RevisionName, pollInterval, versionPath)
 		if err != nil {
 			http.Error(w, "failed to generate runtime config", http.StatusInternalServerError)
 			return
@@ -89,7 +113,19 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Resolve on-disk directory
+	// 2. Active Version Endpoint (/_version or custom path)
+	if r.URL.Path == versionPath {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"version": target.RevisionName,
+			"image":   target.Image,
+		})
+		return
+	}
+
+	// 3. Resolve on-disk directory
 	dir := rt.cacheManager.RevisionDir(target.Namespace, target.WebsiteName, target.RevisionName)
 	if !rt.cacheManager.IsCached(target.Namespace, target.WebsiteName, target.RevisionName) {
 		http.Error(w, "revision assets not yet warmed on this replica", http.StatusServiceUnavailable)
@@ -112,7 +148,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. SPA Fallback: Serve index.html
+	// 4. SPA Fallback: Serve index.html
 	indexPath := filepath.Join(dir, "index.html")
 	indexBytes, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -122,7 +158,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Inject inline script if enabled
 	if target.InjectionMode == "inline" || target.InjectionMode == "both" {
-		injected, err := injection.InjectInlineScript(indexBytes, target.Env)
+		injected, err := injection.InjectInlineScript(indexBytes, target.Env, target.RevisionName, pollInterval, versionPath)
 		if err == nil {
 			indexBytes = injected
 		}

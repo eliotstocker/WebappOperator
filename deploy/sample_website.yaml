@@ -13,6 +13,7 @@ spec:
   injection:
     mode: "endpoint"
     path: "/_config.js"
+    pollIntervalSeconds: 30
   revisionHistoryLimit: 3
   ingress:
     enabled: true

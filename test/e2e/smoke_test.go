@@ -120,12 +120,14 @@ func TestEndToEndSmokeWorkflow(t *testing.T) {
 	// 5. Initialize HTTP router and register website route
 	router := server.NewRouter(cacheMgr)
 	router.SetWebsiteRoutes([]string{"demo.example.com"}, server.RouteTarget{
-		Namespace:     ns,
-		WebsiteName:   webName,
-		RevisionName:  revName,
-		Env:           map[string]string{"API_ENDPOINT": "https://api.production.internal", "FEATURE_X": "enabled"},
-		InjectionMode: "both",
-		ConfigPath:    "/_config.js",
+		Namespace:           ns,
+		WebsiteName:         webName,
+		RevisionName:        revName,
+		Image:               imageRefStr,
+		Env:                 map[string]string{"API_ENDPOINT": "https://api.production.internal", "FEATURE_X": "enabled"},
+		InjectionMode:       "both",
+		ConfigPath:          "/_config.js",
+		PollIntervalSeconds: 30,
 	})
 
 	serverMux := http.NewServeMux()
@@ -159,6 +161,18 @@ func TestEndToEndSmokeWorkflow(t *testing.T) {
 	if !strings.Contains(body, "https://api.production.internal") {
 		t.Errorf("expected API_ENDPOINT in config.js, got: %s", body)
 	}
+	if !strings.Contains(body, "webapp:update") {
+		t.Errorf("expected webapp:update watcher in config.js, got: %s", body)
+	}
+
+	// Scenario A2: Active Version Endpoint
+	resp, body = doGet("/_version")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for /_version, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(body, revName) {
+		t.Errorf("expected revision name %s in /_version, got: %s", revName, body)
+	}
 
 	// Scenario B: Root index.html with inline injection
 	resp, body = doGet("/")
@@ -167,6 +181,9 @@ func TestEndToEndSmokeWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(body, "<script id=\"__ENV__\">") {
 		t.Errorf("expected inline script in index.html, got: %s", body)
+	}
+	if !strings.Contains(body, "webapp:update") {
+		t.Errorf("expected webapp:update watcher in inline script, got: %s", body)
 	}
 
 	// Scenario C: Immutable asset serving

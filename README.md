@@ -1,83 +1,108 @@
 # webapp-operator
 
-A Kubernetes-native platform for hosting and serving Single Page Applications (SPAs) with GitOps, OCI artifacts, and dynamic runtime configuration.
+> **Kinda like GitHub Pages for your Kubernetes cluster.**  
+> An efficient, Kubernetes-native way to run as many single page web apps as your heart desires.
 
-> **Note on Creation & AI Assistance:**
+> **Note on Creation & AI Assistance:**  
 > The idea, problem definition, and architectural direction behind `webapp-operator` were conceived, designed, and guided by human engineers. The underlying implementation, unit/E2E test suites, deployment manifests, and documentation were developed with strong assistance and augmentation from AI.
 
 ---
 
-## Why webapp-operator?
+## Why does this exist?
 
-Deploying SPAs in Kubernetes traditionally falls into two painful patterns:
-1. **The Container Bloat Model:** Packaging Nginx + static files into a new container image for every commit. This wastes 50–100MB of RAM per idle pod, slows down CI builds, and requires rebuilding bundles just to update an API URL.
-2. **The "Broken GitOps" Model:** Pushing static assets to external object storage (AWS S3, Cloudflare Pages). This decouples frontend releases from cluster GitOps (ArgoCD/Flux) and breaks preview environments.
+I'm old, right? When I think of single page web apps, I remember FTPing two files onto a server and being done with it. 
 
-**`webapp-operator` bridges this gap.** Frontends are packaged as lightweight OCI artifacts (just the static tarball) and deployed as native Kubernetes Custom Resources (`Website`). A shared, multi-tenant gateway fleet caches and serves the assets with dynamic runtime environment injection.
+Of course things have moved on for the better, but we've somehow turned deploying a web app into a complex and inefficient chore when really we still just need to ship some files and configuration to people's browsers.
+
+`webapp-operator` was built because I wanted a sane, native way to host static frontends on Kubernetes:
+
+* **The "Container Smell":** Packaging Nginx into a container image for every single website commit has a weird smell of *"why do we need all of this?"* If you're serving one or two sites, that's fine. But as soon as you have any sort of scale, running dedicated pods for every frontend is wasteful and clunky.
+* **A Single Way to Ship Software:** If your APIs and backends run on Kubernetes, why throw your frontends onto AWS S3, Cloudflare Pages, or Vercel? Keep all your Infrastructure-as-Code in one place, use one registry for all your release candidates, and use a single API for deployment handling.
+* **Build Once, Deploy Everywhere:** It’s an antipattern to ship different build artifacts to different environments. Every built asset should be a deployable release candidate for *any* environment. It injects runtime environment variables dynamically so you never have to rebuild your frontend just to update an API URL.
 
 ---
 
-## Key Features
+## How it works
 
-* 📦 **Standard OCI Distribution:** Push static builds to any container registry (GHCR, ECR, Harbor) using `oras` or `docker buildx` with `FROM scratch`.
-* ⚙️ **Runtime Configuration Injection:** Change environment variables without rebuilding JS bundles. Injects `window.__ENV__` dynamically via a CSP-compliant endpoint (`/_config.js`) or inline `<script>`.
-* 🛡️ **Zero "Chunk 404s":** Multi-revision caching retains previous build chunks across releases, preventing broken navigation for users with open browser tabs.
-* ⚡ **Zero External Storage Requirements:** Unpacks directly into pod `emptyDir` volumes. Works instantly on Kind, Minikube, bare metal, or cloud clusters.
-* 🔄 **Synchronized Rollouts:** The elected leader coordinates rollout health with Kubernetes `EndpointSlice` to ensure all active pods have cached assets before switching traffic.
-* 🌐 **Optional Managed Ingress:** Automatically reconciles standard Kubernetes `Ingress` objects when requested, or sits behind your existing Gateway API / Ingress.
+The developer workflow is simple:
+1. You run your build (`npm run build`, `vite build`, etc.).
+2. You push the static output directory to your container registry as an OCI artifact (using `oras` or `docker buildx` with `FROM scratch`).
+3. You update your Kubernetes manifest.
+
+A shared gateway fleet runs in your cluster, watches your `Website` resources, pulls the static files into a local cache, and serves them with sub-millisecond dynamic configuration injection.
+
+```
+GitOps (Argo CD / Flux)
+         │
+         ▼
+   Website (CRD) ──► creates ──► WebsiteRevision (CRD)
+                                          │
+            ┌─────────────────────────────┴─────────────────────────────┐
+            ▼                                                           ▼
+Gateway Pod (Leader)                                        Gateway Pod (Peer)
+• Watches EndpointSlice                                     • Fetches OCI layer to local cache
+• Confirms peer readiness                                   • Reports ready to Leader
+• Promotes revision to Active                               • Serves HTTP / assets / _config.js
+```
 
 ---
 
 ## Quickstart
 
-### 1. Push Static Assets as an OCI Artifact
+### 1. Push your static build to your registry
+
+You don't need a base OS or web server image—just the static directory:
 
 ```bash
-# Option A: Using ORAS (Fastest, no Docker daemon)
-oras push ghcr.io/my-org/frontend:v1.2.0 ./dist
+# Option A: Using ORAS (Fastest, no Docker daemon needed)
+oras push ghcr.io/my-org/my-app:v1.0.0 ./dist
 
 # Option B: Using standard Docker
 cat <<EOF > Dockerfile
 FROM scratch
 COPY ./dist /
 EOF
-docker buildx build --push -t ghcr.io/my-org/frontend:v1.2.0 .
+docker buildx build --push -t ghcr.io/my-org/my-app:v1.0.0 .
 ```
 
-### 2. Deploy the `Website` Custom Resource
+### 2. Deploy your `Website`
 
 ```yaml
 apiVersion: webapp.io/v1alpha1
 kind: Website
 metadata:
-  name: dashboard
+  name: store
   namespace: default
 spec:
-  image: ghcr.io/my-org/frontend:v1.2.0
+  image: ghcr.io/my-org/my-app:v1.0.0
   hostnames:
-    - "dashboard.example.com"
+    - "store.example.com"
   
   # Dynamic environment variables injected at request time
   env:
     API_URL: "https://api.example.com"
-    FEATURE_NEW_NAV: "true"
+    ENVIRONMENT: "production"
   
-  # Injection mode: "endpoint" (default, CSP-safe) or "inline"
+  # Injection mode: "endpoint" (default, CSP-friendly) or "inline"
   injection:
     mode: "endpoint"
     path: "/_config.js"
+    # versionPath: "/_version"  # Custom path for version check (defaults to /_version)
+    # Live version update polling is ON by default (checks every 30s)
+    # versionPolling: false     # Set to false to disable background polling
+    # pollIntervalSeconds: 30   # Custom check interval (defaults to 30)
 
-  # Optional: Automatically create and reconcile Ingress
+  # Optional: Automatically create and manage an Ingress
   ingress:
     enabled: true
     className: "nginx"
     tls:
       - hosts:
-          - "dashboard.example.com"
-        secretName: "dashboard-tls"
+          - "store.example.com"
+        secretName: "store-tls"
 ```
 
-### 3. Consume Config in your Frontend
+### 3. Consume config in your frontend
 
 In your `index.html`:
 ```html
@@ -89,79 +114,67 @@ In your application code:
 const apiUrl = window.__ENV__?.API_URL || "http://localhost:8080";
 ```
 
+### 4. Listen for new version deployments
+
+The injected script automatically polls `/_version` in the background (every 30 seconds by default). When a new rollout completes, it fires a `webapp:update` event on both `window` and `document` so your application can prompt the user to refresh or reload dynamically:
+
+```javascript
+window.addEventListener('webapp:update', (event) => {
+  const { currentVersion, newVersion } = event.detail;
+  console.log(`Update ready: ${newVersion} (currently running ${currentVersion})`);
+
+  // Prompt the user or reload the page
+  showBanner({
+    message: "A new version of the app is available!",
+    actionText: "Reload",
+    onClick: () => window.location.reload()
+  });
+});
+```
+
+You can also read `window.__APP_VERSION__` directly at any time.
+
 ---
 
-## Architecture at a Glance
+## Request throughput
 
-```
-GitOps (ArgoCD / Flux)
-         │
-         ▼
-   Website (CRD) ──► creates ──► WebsiteRevision (CRD)
-                                          │
-            ┌─────────────────────────────┴─────────────────────────────┐
-            ▼                                                           ▼
-Gateway Pod (Leader)                                        Gateway Pod (Peer)
-• Watches EndpointSlice                                     • Fetches OCI layer to emptyDir
-• Aggregates peer readiness                                 • Reports to Leader via internal HTTP
-• Flips revision to Active                                  • Serves HTTP / assets / _config.js
-```
+I ran realistic benchmarks on an Apple M1 (8 cores) to see how each pod handles heavy traffic. Because static files are streamed straight from disk cache using the OS page cache and config is generated in-memory, your network or ingress controller will choke long before the pod does:
 
-For the complete technical specification and design details, see [docs/architecture.md](docs/architecture.md).  
-For Argo CD GitOps health checks integration, see [docs/argocd.md](docs/argocd.md).
+| Scenario | What's happening | Request throughput | RAM usage |
+| :--- | :--- | :--- | :--- |
+| **Discreet config endpoint** | Serving dynamic `/_config.js` with your environment variables | **~1,400,000 req / sec** | ~18 MB |
+| **Inline environment script** | Serving `index.html` with your config injected into the `<head>` | **~48,500 req / sec** | ~18 MB |
+| **JS bundle** | Streaming 100 KB static chunks straight from local disk | **~40,000 req / sec** (~4 GB/s) | ~18 MB |
+| **Real world app load** | Mixed continuous traffic across pages, bundles, and config endpoints | **~45,000 req / sec** | ~18 MB |
 
----
-
-## Performance & Benchmarks
-
-The unified operator and gateway is built in Go with zero external runtime dependencies, minimal allocations, and high-concurrency throughput.
-
-### HTTP Serving Benchmarks
-
-*Benchmarked on Apple M1 (8 cores) using Go `testing.B` with `-benchmem`:*
-
-| Endpoint / Workload | Payload Size | Mode | Latency | Memory Allocs | Est. Throughput |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Runtime Config (`/_config.js`)** | ~200 B | Parallel | **698 ns** | 16 allocs / 1.1 KB | **~1,430,000 req/sec** |
-| **Runtime Config (`/_config.js`)** | ~200 B | Single-core | **1.35 µs** | 16 allocs / 1.1 KB | **~740,000 req/sec** |
-| **SPA Fallback (Inline Injection)** | ~2 KB (`index.html`) | Parallel | **20.6 µs** | 45 allocs / 5.5 KB | **~48,500 req/sec** |
-| **SPA Fallback (Inline Injection)** | ~2 KB (`index.html`) | Single-core | **36.5 µs** | 45 allocs / 5.5 KB | **~27,400 req/sec** |
-| **Small Static Asset (CSS chunk)** | 5 KB | Parallel | **21.5 µs** | 34 allocs / 8.6 KB | **~46,500 req/sec** |
-| **Small Static Asset (CSS chunk)** | 5 KB | Single-core | **37.6 µs** | 34 allocs / 8.6 KB | **~26,600 req/sec** |
-| **Large Static Bundle (JS bundle)** | 100 KB | Parallel | **24.8 µs** | 34 allocs / 36 KB | **~40,200 req/sec** (~4.0 GB/s) |
-| **Large Static Bundle (JS bundle)** | 100 KB | Single-core | **44.8 µs** | 34 allocs / 36 KB | **~22,300 req/sec** (~2.2 GB/s) |
-
-### Memory & Pod Resource Footprint
+### Efficient resource usage
 
 During a sustained test of **50,000 requests** across mixed routes:
 * **Active Heap In-Use:** **1.55 MB**
-* **Total Runtime System Memory (`Sys`):** **18.27 MB**
-* **Idle CPU:** `< 0.1%` (a few milliseconds per minute)
+* **Total Process Memory (`Sys`):** **18.27 MB**
+* **Idle CPU:** `< 0.1%` (virtually zero at rest)
 
-Because static asset serving leverages the operating system page cache via `http.ServeFile` and OCI layer extraction streams directly to disk in 32KB chunks via `io.Copy`, memory usage remains flat even under heavy load.
-
-### Recommended Pod Sizing
-
-The default manifests and Helm chart ship with minimal resource footprints:
+Because it barely sips resources, the default Kubernetes deployment footprint is tiny:
 
 ```yaml
 resources:
   requests:
-    cpu: 10m        # 0.01 core (idle footprint is negligible)
+    cpu: 10m        # 0.01 core
     memory: 32Mi    # Plenty of headroom over the 18MB base footprint
   limits:
-    cpu: 500m       # Burst capacity for 40,000+ RPS
-    memory: 128Mi   # Buffer for OCI layer pull and decompression
+    cpu: 500m       # Burst capacity for high-volume spikes
+    memory: 128Mi   # Headroom for pulling and unpacking OCI layers
 ```
 
-You can run the benchmark suite locally with:
-```bash
-make bench
-```
+---
+
+## Documentation
+
+* [How it works under the hood](docs/architecture.md): Root and revision CRD model, peer sync, and idempotent fallback fetches.
+* [Argo CD Health Checks](docs/argocd.md): Custom Lua scripts to show real-time rollout health in the Argo CD UI.
 
 ---
 
 ## License
 
 Apache 2.0
-

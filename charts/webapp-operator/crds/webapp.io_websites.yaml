@@ -74,6 +74,19 @@ spec:
                     path:
                       type: string
                       default: "/_config.js"
+                    versionPath:
+                      type: string
+                      default: "/_version"
+                      description: URL path for the active version endpoint. Default is "/_version".
+                    versionPolling:
+                      type: boolean
+                      default: true
+                      description: Controls whether client apps automatically poll for new deployed versions.
+                    pollIntervalSeconds:
+                      type: integer
+                      format: int32
+                      default: 30
+                      description: How often (in seconds) the frontend polls for new versions. Set to 0 to disable.
                 imagePullSecrets:
                   type: array
                   items:

@@ -68,6 +68,13 @@ spec:
                       type: string
                     path:
                       type: string
+                    versionPath:
+                      type: string
+                    versionPolling:
+                      type: boolean
+                    pollIntervalSeconds:
+                      type: integer
+                      format: int32
                 imagePullSecrets:
                   type: array
                   items:

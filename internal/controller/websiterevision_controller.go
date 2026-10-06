@@ -179,12 +179,16 @@ func (r *WebsiteRevisionReconciler) reconcileLeaderRollout(ctx context.Context, 
 			// Immediately update in-memory router routes
 			if r.Router != nil {
 				target := server.RouteTarget{
-					Namespace:     website.Namespace,
-					WebsiteName:   website.Name,
-					RevisionName:  revision.Name,
-					Env:           revision.Spec.Env,
-					InjectionMode: string(revision.Spec.Injection.Mode),
-					ConfigPath:    revision.Spec.Injection.Path,
+					Namespace:           website.Namespace,
+					WebsiteName:         website.Name,
+					RevisionName:        revision.Name,
+					Image:               revision.Spec.Image,
+					Env:                 revision.Spec.Env,
+					InjectionMode:       string(revision.Spec.Injection.Mode),
+					ConfigPath:          revision.Spec.Injection.Path,
+					VersionPath:         revision.Spec.Injection.GetVersionPath(),
+					DisablePolling:      !revision.Spec.Injection.IsVersionPollingEnabled(),
+					PollIntervalSeconds: revision.Spec.Injection.GetPollIntervalSeconds(),
 				}
 				r.Router.SetWebsiteRoutes(website.Spec.Hostnames, target)
 			}

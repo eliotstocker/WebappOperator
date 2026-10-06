@@ -39,12 +39,14 @@ func TestServerRoutingAndConfig(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(revDir, "favicon.png"), []byte("pngdata"), 0644)
 
 	router.SetWebsiteRoutes([]string{"spa.example.com"}, RouteTarget{
-		Namespace:     ns,
-		WebsiteName:   web,
-		RevisionName:  rev,
-		Env:           map[string]string{"API_HOST": "https://api.test"},
-		InjectionMode: "both",
-		ConfigPath:    "/_config.js",
+		Namespace:           ns,
+		WebsiteName:         web,
+		RevisionName:        rev,
+		Image:               "ghcr.io/example/spa:v1",
+		Env:                 map[string]string{"API_HOST": "https://api.test"},
+		InjectionMode:       "both",
+		ConfigPath:          "/_config.js",
+		PollIntervalSeconds: 30,
 	})
 
 	// 1. Test /_config.js dynamic endpoint
@@ -59,8 +61,33 @@ func TestServerRoutingAndConfig(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "API_HOST") {
 		t.Fatalf("missing env var in config js: %s", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `window.__APP_VERSION__ = "rev-123";`) {
+		t.Fatalf("missing app version in config js: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "webapp:update") {
+		t.Fatalf("missing webapp:update listener in config js: %s", rec.Body.String())
+	}
 	if rec.Header().Get("Cache-Control") != "no-cache, no-store, must-revalidate" {
 		t.Errorf("expected no-cache header, got %s", rec.Header().Get("Cache-Control"))
+	}
+
+	// 1b. Test /_version active version endpoint
+	reqVer := httptest.NewRequest(http.MethodGet, "/_version", nil)
+	reqVer.Host = "spa.example.com"
+	recVer := httptest.NewRecorder()
+	router.ServeHTTP(recVer, reqVer)
+
+	if recVer.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /_version, got %d", recVer.Code)
+	}
+	if recVer.Header().Get("Cache-Control") != "no-cache, no-store, must-revalidate" {
+		t.Errorf("expected no-cache header for /_version, got %s", recVer.Header().Get("Cache-Control"))
+	}
+	if !strings.Contains(recVer.Body.String(), `"version":"rev-123"`) {
+		t.Errorf("expected version rev-123 in /_version response: %s", recVer.Body.String())
+	}
+	if !strings.Contains(recVer.Body.String(), `"image":"ghcr.io/example/spa:v1"`) {
+		t.Errorf("expected image in /_version response: %s", recVer.Body.String())
 	}
 
 	// 2. Test static asset /assets/main.js
@@ -171,3 +198,103 @@ func TestIsImmutableAsset(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteTargetPollingDefaultsAndDisabling(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "webapp-poll-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mgr, _ := cache.NewDiskManager(tempDir)
+	router := NewRouter(mgr)
+
+	// 1. Verify EffectivePollInterval helper
+	tDefault := RouteTarget{}
+	if tDefault.EffectivePollInterval() != 30 {
+		t.Errorf("expected default 30, got %d", tDefault.EffectivePollInterval())
+	}
+
+	tCustom := RouteTarget{PollIntervalSeconds: 10}
+	if tCustom.EffectivePollInterval() != 10 {
+		t.Errorf("expected 10, got %d", tCustom.EffectivePollInterval())
+	}
+
+	tDisabled := RouteTarget{DisablePolling: true}
+	if tDisabled.EffectivePollInterval() != 0 {
+		t.Errorf("expected 0 when disabled, got %d", tDisabled.EffectivePollInterval())
+	}
+
+	// 2. Test HTTP serving when disabled
+	router.SetWebsiteRoutes([]string{"disabled.example.com"}, RouteTarget{
+		Namespace:      "ns",
+		WebsiteName:    "web",
+		RevisionName:   "rev-off",
+		DisablePolling: true,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/_config.js", nil)
+	req.Host = "disabled.example.com"
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "pollIntervalMs") {
+		t.Errorf("expected no pollIntervalMs when polling disabled, got: %s", rec.Body.String())
+	}
+
+	// 3. Test HTTP serving when enabled by default (no polling parameters passed)
+	router.SetWebsiteRoutes([]string{"default.example.com"}, RouteTarget{
+		Namespace:    "ns",
+		WebsiteName:  "web",
+		RevisionName: "rev-default",
+	})
+
+	req = httptest.NewRequest(http.MethodGet, "/_config.js", nil)
+	req.Host = "default.example.com"
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "var pollIntervalMs = 30000;") {
+		t.Errorf("expected default 30000ms polling watcher in config js: %s", rec.Body.String())
+	}
+
+	// 4. Test custom VersionPath
+	router.SetWebsiteRoutes([]string{"custom-ver.example.com"}, RouteTarget{
+		Namespace:    "ns",
+		WebsiteName:  "web",
+		RevisionName: "rev-custom-ver",
+		Image:        "img:v1",
+		VersionPath:  "/api/v1/version",
+	})
+
+	// GET /api/v1/version returns 200
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	req.Host = "custom-ver.example.com"
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for custom version path /api/v1/version, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"version":"rev-custom-ver"`) {
+		t.Errorf("expected version rev-custom-ver, got: %s", rec.Body.String())
+	}
+
+	// Verify /_config.js polls /api/v1/version
+	req = httptest.NewRequest(http.MethodGet, "/_config.js", nil)
+	req.Host = "custom-ver.example.com"
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `fetch("/api/v1/version"`) {
+		t.Errorf("expected watcher in config.js to fetch /api/v1/version, got: %s", rec.Body.String())
+	}
+}
+
+
