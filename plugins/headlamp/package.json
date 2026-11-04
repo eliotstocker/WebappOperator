@@ -1,6 +1,6 @@
 {
   "name": "headlamp-webapp-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Headlamp plugin for viewing and managing webapps and revisions",
   "main": "main.js",
   "scripts": {
