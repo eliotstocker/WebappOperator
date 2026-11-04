@@ -1,0 +1,26 @@
+{
+  "name": "headlamp-webapp-plugin",
+  "version": "0.1.0",
+  "description": "Headlamp plugin for viewing and managing webapps and revisions",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "headlamp-plugin start",
+    "build": "headlamp-plugin build",
+    "format": "headlamp-plugin format",
+    "lint": "headlamp-plugin lint",
+    "package": "headlamp-plugin package",
+    "tsc": "headlamp-plugin tsc"
+  },
+  "keywords": [
+    "headlamp",
+    "headlamp-plugin",
+    "kubernetes",
+    "webapp-operator"
+  ],
+  "devDependencies": {
+    "@kinvolk/headlamp-plugin": "^0.14.0"
+  },
+  "overrides": {
+    "typescript": "5.6.2"
+  }
+}
