@@ -107,6 +107,30 @@ const (
 	WebsitePhaseDegraded   WebsitePhase = "Degraded"
 )
 
+// BotPageSpec configures serving an alternate static HTML file to bots and crawlers
+// on page/SPA fallback routes instead of index.html.
+type BotPageSpec struct {
+	// Enabled toggles serving the alternate bot HTML page.
+	// Defaults to true when botPage is configured.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// File is the path to the HTML file inside the OCI artifact (relative to the artifact root).
+	// Default is "bot.html".
+	// +kubebuilder:default="bot.html"
+	// +optional
+	File string `json:"file,omitempty"`
+
+	// UserAgents is a list of case-insensitive substrings matched against the User-Agent header.
+	// Added to the built-in crawler list unless OverrideDefaults is true.
+	// +optional
+	UserAgents []string `json:"userAgents,omitempty"`
+
+	// OverrideDefaults disables the built-in crawler list so only UserAgents are matched.
+	// +optional
+	OverrideDefaults bool `json:"overrideDefaults,omitempty"`
+}
+
 // WebsiteSpec defines the desired state of Website
 type WebsiteSpec struct {
 	// Image specifies the OCI artifact containing static website assets.
@@ -135,6 +159,10 @@ type WebsiteSpec struct {
 	// Ingress configuration for optional automated Ingress reconciliation.
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+
+	// BotPage configures an alternate static HTML page served to bots/crawlers on SPA routes.
+	// +optional
+	BotPage *BotPageSpec `json:"botPage,omitempty"`
 }
 
 // WebsiteStatus defines the observed state of Website
