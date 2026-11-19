@@ -123,6 +123,173 @@ spec:
                               type: string
                           secretName:
                             type: string
+                security:
+                  type: object
+                  description: HTTP security headers applied to responses served by this website.
+                  properties:
+                    preset:
+                      type: string
+                      enum:
+                        - none
+                        - standard
+                        - strict
+                    contentTypeOptions:
+                      type: boolean
+                    frameOptions:
+                      type: string
+                      enum:
+                        - DENY
+                        - SAMEORIGIN
+                        - disabled
+                    referrerPolicy:
+                      type: string
+                    coop:
+                      type: string
+                      enum:
+                        - same-origin
+                        - same-origin-allow-popups
+                        - unsafe-none
+                        - disabled
+                    corp:
+                      type: string
+                      enum:
+                        - same-origin
+                        - same-site
+                        - cross-origin
+                        - disabled
+                    coep:
+                      type: string
+                      enum:
+                        - unsafe-none
+                        - credentialless
+                        - require-corp
+                        - disabled
+                    xssProtection:
+                      type: boolean
+                    hsts:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                        maxAge:
+                          type: integer
+                          format: int32
+                          default: 31536000
+                        includeSubDomains:
+                          type: boolean
+                        preload:
+                          type: boolean
+                    permissionsPolicy:
+                      type: object
+                      properties:
+                        camera:
+                          type: array
+                          items:
+                            type: string
+                        microphone:
+                          type: array
+                          items:
+                            type: string
+                        geolocation:
+                          type: array
+                          items:
+                            type: string
+                        payment:
+                          type: array
+                          items:
+                            type: string
+                        usb:
+                          type: array
+                          items:
+                            type: string
+                        fullscreen:
+                          type: array
+                          items:
+                            type: string
+                        displayCapture:
+                          type: array
+                          items:
+                            type: string
+                        extra:
+                          type: object
+                          additionalProperties:
+                            type: array
+                            items:
+                              type: string
+                    csp:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                        reportOnly:
+                          type: boolean
+                        raw:
+                          type: string
+                        directives:
+                          type: object
+                          properties:
+                            defaultSrc:
+                              type: array
+                              items:
+                                type: string
+                            scriptSrc:
+                              type: array
+                              items:
+                                type: string
+                            styleSrc:
+                              type: array
+                              items:
+                                type: string
+                            imgSrc:
+                              type: array
+                              items:
+                                type: string
+                            connectSrc:
+                              type: array
+                              items:
+                                type: string
+                            fontSrc:
+                              type: array
+                              items:
+                                type: string
+                            objectSrc:
+                              type: array
+                              items:
+                                type: string
+                            mediaSrc:
+                              type: array
+                              items:
+                                type: string
+                            frameSrc:
+                              type: array
+                              items:
+                                type: string
+                            frameAncestors:
+                              type: array
+                              items:
+                                type: string
+                            baseUri:
+                              type: array
+                              items:
+                                type: string
+                            formAction:
+                              type: array
+                              items:
+                                type: string
+                            upgradeInsecureRequests:
+                              type: boolean
+                            reportUri:
+                              type: string
+                            extra:
+                              type: object
+                              additionalProperties:
+                                type: array
+                                items:
+                                  type: string
+                    customHeaders:
+                      type: object
+                      additionalProperties:
+                        type: string
             status:
               type: object
               properties:

@@ -3,6 +3,8 @@ package injection
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -80,12 +82,24 @@ func GenerateConfigJS(env map[string]string, version string, pollIntervalSeconds
 // InjectInlineScript injects a <script id="__ENV__"> tag immediately before the closing </head> tag.
 // If </head> is not present, it appends the script at the start of <body> or the end of the content.
 func InjectInlineScript(html []byte, env map[string]string, version string, pollIntervalSeconds int32, versionPath string) ([]byte, error) {
+	res, _, err := InjectInlineScriptWithHash(html, env, version, pollIntervalSeconds, versionPath)
+	return res, err
+}
+
+// InjectInlineScriptWithHash injects the inline config script and returns the modified HTML
+// along with the CSP sha256 source expression (e.g. "'sha256-...'") for the script body.
+func InjectInlineScriptWithHash(html []byte, env map[string]string, version string, pollIntervalSeconds int32, versionPath string) ([]byte, string, error) {
 	js, err := GenerateConfigJS(env, version, pollIntervalSeconds, versionPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	scriptTag := fmt.Sprintf("<script id=\"__ENV__\">\n%s</script>\n", string(js))
+	// Browser CSP hashes the exact bytes between <script ...> and </script>, including the leading newline.
+	scriptBody := "\n" + string(js)
+	sum := sha256.Sum256([]byte(scriptBody))
+	cspHash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+
+	scriptTag := fmt.Sprintf("<script id=\"__ENV__\">%s</script>\n", scriptBody)
 
 	// Insert before closing </head> tag if present
 	lower := bytes.ToLower(html)
@@ -94,14 +108,14 @@ func InjectInlineScript(html []byte, env map[string]string, version string, poll
 		res = append(res, html[:idx]...)
 		res = append(res, scriptTag...)
 		res = append(res, html[idx:]...)
-		return res, nil
+		return res, cspHash, nil
 	}
 
 	// Fallback: prepend script tag
 	res := make([]byte, 0, len(html)+len(scriptTag))
 	res = append(res, scriptTag...)
 	res = append(res, html...)
-	return res, nil
+	return res, cspHash, nil
 }
 
 // CleanPath normalizes the configured config endpoint path.
