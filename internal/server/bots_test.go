@@ -234,3 +234,35 @@ func TestRouterBotPageServing(t *testing.T) {
 		t.Errorf("expected no Vary header when botPage disabled, got %q", rec.Header().Get("Vary"))
 	}
 }
+
+func TestLoadCrawlerRegexFromJSON(t *testing.T) {
+	if got := loadCrawlerRegexFromJSON([]byte("not-json")); got != nil {
+		t.Errorf("expected nil for invalid JSON")
+	}
+	if got := loadCrawlerRegexFromJSON([]byte("[]")); got != nil {
+		t.Errorf("expected nil for empty JSON array")
+	}
+
+	payload := `[
+		{"pattern": "Googlebot\\/", "tags": ["search-engine"]},
+		{"pattern": "curl\\/", "tags": ["http-library"]},
+		{"pattern": "(?!foo)bar", "tags": ["seo"]},
+		{"pattern": "PerplexityBot\\/", "tags": ["ai-crawler"]}
+	]`
+	re := loadCrawlerRegexFromJSON([]byte(payload))
+	if re == nil {
+		t.Fatalf("expected compiled regex from valid JSON")
+	}
+	if !re.MatchString("Mozilla/5.0 (compatible; Googlebot/2.1)") {
+		t.Errorf("expected search-engine pattern to match")
+	}
+	if !re.MatchString("PerplexityBot/1.0") {
+		t.Errorf("expected ai-crawler pattern to match")
+	}
+	if re.MatchString("curl/8.4.0") {
+		t.Errorf("expected http-library tag to be filtered out")
+	}
+	if re.MatchString("bar") {
+		t.Errorf("expected unsupported PCRE lookahead pattern to be skipped")
+	}
+}

@@ -2,13 +2,18 @@
 BINARY_NAME ?= bin/operator
 IMAGE_NAME ?= ghcr.io/eliotstocker/webapp-operator
 TAG ?= latest
+CRAWLER_UA_URL ?= https://raw.githubusercontent.com/monperrus/crawler-user-agents/master/crawler-user-agents.json
 
-.PHONY: all build test test-coverage bench run docker-build clean
+.PHONY: all fetch-bots build test test-coverage bench run docker-build clean
 
 all: test build
 
+## fetch-bots: Downloads the latest crawler-user-agents.json for embedding at build time
+fetch-bots:
+	curl -fsSL $(CRAWLER_UA_URL) -o internal/server/crawler-user-agents.json
+
 ## build: Compiles the unified webapp-operator binary
-build:
+build: fetch-bots
 	@mkdir -p bin
 	CGO_ENABLED=0 go build -o $(BINARY_NAME) ./cmd/operator
 

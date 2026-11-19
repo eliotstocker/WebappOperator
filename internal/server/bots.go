@@ -1,11 +1,79 @@
 package server
 
 import (
+	"embed"
+	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	webappv1alpha1 "github.com/eliotstocker/webapp-operator/api/v1alpha1"
 )
+
+//go:embed *.json
+var embeddedBotFiles embed.FS
+
+var defaultBotTags = map[string]struct{}{
+	"search-engine":  {},
+	"social-preview": {},
+	"ai-crawler":     {},
+	"seo":            {},
+}
+
+type crawlerEntry struct {
+	Pattern string   `json:"pattern"`
+	Tags    []string `json:"tags"`
+}
+
+// defaultBotRegex is compiled at startup from crawler-user-agents.json when fetched at build time.
+// If the file was not fetched (e.g. direct `go test`), it remains nil and defaultBotUserAgents is used.
+var defaultBotRegex = initDefaultBotRegex()
+
+func initDefaultBotRegex() *regexp.Regexp {
+	data, err := embeddedBotFiles.ReadFile("crawler-user-agents.json")
+	if err != nil {
+		return nil
+	}
+	return loadCrawlerRegexFromJSON(data)
+}
+
+// loadCrawlerRegexFromJSON parses a monperrus/crawler-user-agents JSON payload, filters entries
+// to search/social/AI/SEO crawlers, and compiles RE2-compatible patterns into one regex.
+func loadCrawlerRegexFromJSON(data []byte) *regexp.Regexp {
+	var entries []crawlerEntry
+	if err := json.Unmarshal(data, &entries); err != nil || len(entries) == 0 {
+		return nil
+	}
+
+	var valid []string
+	for _, entry := range entries {
+		if entry.Pattern == "" || !hasAllowedBotTag(entry.Tags) {
+			continue
+		}
+		if _, err := regexp.Compile("(?i)" + entry.Pattern); err != nil {
+			continue
+		}
+		valid = append(valid, entry.Pattern)
+	}
+	if len(valid) == 0 {
+		return nil
+	}
+
+	combined, err := regexp.Compile("(?i)(?:" + strings.Join(valid, ")|(?:") + ")")
+	if err != nil {
+		return nil
+	}
+	return combined
+}
+
+func hasAllowedBotTag(tags []string) bool {
+	for _, t := range tags {
+		if _, ok := defaultBotTags[t]; ok {
+			return true
+		}
+	}
+	return false
+}
 
 const defaultBotPageFile = "bot.html"
 
@@ -60,8 +128,9 @@ var defaultBotUserAgents = []string{
 // CompiledBotPage holds precomputed bot detection patterns and sanitized file path
 // for a Website route to avoid per-request allocations on the serving hot path.
 type CompiledBotPage struct {
-	file     string
-	patterns []string
+	file         string
+	patterns     []string
+	defaultRegex *regexp.Regexp
 }
 
 // CompileBotPage resolves a BotPageSpec into a precomputed matcher.
@@ -88,7 +157,9 @@ func CompileBotPage(spec *webappv1alpha1.BotPageSpec) *CompiledBotPage {
 		patterns = append(patterns, p)
 	}
 
+	var defaultRegex *regexp.Regexp
 	if !spec.OverrideDefaults {
+		defaultRegex = defaultBotRegex
 		for _, p := range defaultBotUserAgents {
 			addPattern(p)
 		}
@@ -97,13 +168,14 @@ func CompileBotPage(spec *webappv1alpha1.BotPageSpec) *CompiledBotPage {
 		addPattern(p)
 	}
 
-	if len(patterns) == 0 {
+	if len(patterns) == 0 && defaultRegex == nil {
 		return nil
 	}
 
 	return &CompiledBotPage{
-		file:     cleanBotPageFile(spec.File),
-		patterns: patterns,
+		file:         cleanBotPageFile(spec.File),
+		patterns:     patterns,
+		defaultRegex: defaultRegex,
 	}
 }
 
@@ -119,6 +191,9 @@ func (cb *CompiledBotPage) File() string {
 func (cb *CompiledBotPage) IsBot(userAgent string) bool {
 	if cb == nil || userAgent == "" {
 		return false
+	}
+	if cb.defaultRegex != nil && cb.defaultRegex.MatchString(userAgent) {
+		return true
 	}
 	lowerUA := strings.ToLower(userAgent)
 	for _, pattern := range cb.patterns {
