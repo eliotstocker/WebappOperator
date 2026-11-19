@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	webappv1alpha1 "github.com/eliotstocker/webapp-operator/api/v1alpha1"
 	"github.com/eliotstocker/webapp-operator/internal/cache"
 	"github.com/eliotstocker/webapp-operator/internal/injection"
 )
@@ -26,6 +27,8 @@ type RouteTarget struct {
 	VersionPath         string
 	DisablePolling      bool
 	PollIntervalSeconds int32
+	Security            *webappv1alpha1.SecuritySpec
+	compiledSecurity    *CompiledSecurity
 }
 
 // EffectivePollInterval returns the effective polling interval in seconds.
@@ -63,6 +66,7 @@ func NewRouter(cm cache.Manager) *Router {
 
 // SetWebsiteRoutes registers or updates all hostnames for a specific website.
 func (rt *Router) SetWebsiteRoutes(hostnames []string, target RouteTarget) {
+	target.compiledSecurity = CompileSecurity(target.Security)
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	for _, host := range hostnames {
@@ -106,6 +110,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to generate runtime config", http.StatusInternalServerError)
 			return
 		}
+		target.compiledSecurity.Apply(w, "")
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.WriteHeader(http.StatusOK)
@@ -115,6 +120,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Active Version Endpoint (/_version or custom path)
 	if r.URL.Path == versionPath {
+		target.compiledSecurity.Apply(w, "")
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.WriteHeader(http.StatusOK)
@@ -138,6 +144,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check if requested path points to an actual file on disk
 	stat, err := os.Stat(filePath)
 	if err == nil && !stat.IsDir() {
+		target.compiledSecurity.Apply(w, "")
 		// Immutable assets caching
 		if strings.HasPrefix(relPath, "assets/") || isImmutableAsset(relPath) {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -157,13 +164,16 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Inject inline script if enabled
+	var inlineScriptHash string
 	if target.InjectionMode == "inline" || target.InjectionMode == "both" {
-		injected, err := injection.InjectInlineScript(indexBytes, target.Env, target.RevisionName, pollInterval, versionPath)
+		injected, scriptHash, err := injection.InjectInlineScriptWithHash(indexBytes, target.Env, target.RevisionName, pollInterval, versionPath)
 		if err == nil {
 			indexBytes = injected
+			inlineScriptHash = scriptHash
 		}
 	}
 
+	target.compiledSecurity.Apply(w, inlineScriptHash)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.WriteHeader(http.StatusOK)

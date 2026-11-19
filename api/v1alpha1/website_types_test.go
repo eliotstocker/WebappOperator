@@ -100,3 +100,56 @@ func TestInjectionSpecVersionPath(t *testing.T) {
 		t.Errorf("expected /custom-version, got: %s", sCustom.GetVersionPath())
 	}
 }
+
+func TestSecuritySpecDeepCopy(t *testing.T) {
+	orig := &SecuritySpec{
+		Preset:             SecurityPresetStandard,
+		ContentTypeOptions: ptrBool(true),
+		HSTS: &HSTSSpec{
+			Enabled: ptrBool(true),
+			MaxAge:  ptrInt32(31536000),
+		},
+		PermissionsPolicy: &PermissionsPolicySpec{
+			Camera: []string{"self"},
+			Extra:  map[string][]string{"fullscreen": {"self"}},
+		},
+		CSP: &CSPSpec{
+			Enabled: ptrBool(true),
+			Directives: &CSPDirectives{
+				ScriptSrc: []string{"'self'"},
+			},
+		},
+		CustomHeaders: map[string]string{"X-Test": "1"},
+	}
+
+	copied := orig.DeepCopy()
+	if copied == nil {
+		t.Fatalf("expected non-nil copy")
+	}
+
+	*orig.ContentTypeOptions = false
+	*orig.HSTS.MaxAge = 60
+	orig.PermissionsPolicy.Camera[0] = "*"
+	orig.PermissionsPolicy.Extra["fullscreen"][0] = "*"
+	orig.CSP.Directives.ScriptSrc[0] = "'unsafe-inline'"
+	orig.CustomHeaders["X-Test"] = "2"
+
+	if !*copied.ContentTypeOptions {
+		t.Errorf("mutation affected copied ContentTypeOptions")
+	}
+	if *copied.HSTS.MaxAge != 31536000 {
+		t.Errorf("mutation affected copied HSTS.MaxAge")
+	}
+	if copied.PermissionsPolicy.Camera[0] != "self" {
+		t.Errorf("mutation affected copied PermissionsPolicy.Camera")
+	}
+	if copied.PermissionsPolicy.Extra["fullscreen"][0] != "self" {
+		t.Errorf("mutation affected copied PermissionsPolicy.Extra")
+	}
+	if copied.CSP.Directives.ScriptSrc[0] != "'self'" {
+		t.Errorf("mutation affected copied CSP.Directives.ScriptSrc")
+	}
+	if copied.CustomHeaders["X-Test"] != "1" {
+		t.Errorf("mutation affected copied CustomHeaders")
+	}
+}
