@@ -189,6 +189,7 @@ func (r *WebsiteRevisionReconciler) reconcileLeaderRollout(ctx context.Context, 
 					VersionPath:         revision.Spec.Injection.GetVersionPath(),
 					DisablePolling:      !revision.Spec.Injection.IsVersionPollingEnabled(),
 					PollIntervalSeconds: revision.Spec.Injection.GetPollIntervalSeconds(),
+					BotPage:             website.Spec.BotPage,
 				}
 				r.Router.SetWebsiteRoutes(website.Spec.Hostnames, target)
 			}

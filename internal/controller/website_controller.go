@@ -133,6 +133,7 @@ func (r *WebsiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			VersionPath:         website.Spec.Injection.GetVersionPath(),
 			DisablePolling:      !website.Spec.Injection.IsVersionPollingEnabled(),
 			PollIntervalSeconds: website.Spec.Injection.GetPollIntervalSeconds(),
+			BotPage:             website.Spec.BotPage,
 		}
 		r.Router.SetWebsiteRoutes(website.Spec.Hostnames, target)
 	}

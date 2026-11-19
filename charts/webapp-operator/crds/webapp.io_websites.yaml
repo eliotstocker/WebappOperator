@@ -123,6 +123,25 @@ spec:
                               type: string
                           secretName:
                             type: string
+                botPage:
+                  type: object
+                  description: Configures serving an alternate static HTML file to bots and crawlers on page/SPA routes.
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Toggles serving the alternate bot HTML page. Defaults to true when botPage is configured.
+                    file:
+                      type: string
+                      default: "bot.html"
+                      description: Path to the HTML file inside the OCI artifact (relative to the artifact root).
+                    userAgents:
+                      type: array
+                      items:
+                        type: string
+                      description: Case-insensitive substrings matched against the User-Agent header. Added to built-in crawler list unless overrideDefaults is true.
+                    overrideDefaults:
+                      type: boolean
+                      description: Disables the built-in crawler list so only userAgents are matched.
             status:
               type: object
               properties:

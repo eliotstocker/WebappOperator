@@ -15,3 +15,6 @@ bin/
 .DS_Store
 .idea/
 .vscode/
+
+# Build-time fetched datasets
+internal/server/crawler-user-agents.json

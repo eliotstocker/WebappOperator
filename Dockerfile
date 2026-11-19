@@ -12,6 +12,10 @@ COPY api/ api/
 COPY cmd/ cmd/
 COPY internal/ internal/
 
+# Fetch latest crawler-user-agents dataset at build time (not vendored in git)
+ARG CRAWLER_UA_URL=https://raw.githubusercontent.com/monperrus/crawler-user-agents/master/crawler-user-agents.json
+RUN wget -qO internal/server/crawler-user-agents.json "${CRAWLER_UA_URL}"
+
 # Build statically linked and stripped binary
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o operator ./cmd/operator
 

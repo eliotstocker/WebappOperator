@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	webappv1alpha1 "github.com/eliotstocker/webapp-operator/api/v1alpha1"
 	"github.com/eliotstocker/webapp-operator/internal/cache"
 	"github.com/eliotstocker/webapp-operator/internal/injection"
 )
@@ -26,6 +27,8 @@ type RouteTarget struct {
 	VersionPath         string
 	DisablePolling      bool
 	PollIntervalSeconds int32
+	BotPage             *webappv1alpha1.BotPageSpec
+	compiledBotPage     *CompiledBotPage
 }
 
 // EffectivePollInterval returns the effective polling interval in seconds.
@@ -63,6 +66,7 @@ func NewRouter(cm cache.Manager) *Router {
 
 // SetWebsiteRoutes registers or updates all hostnames for a specific website.
 func (rt *Router) SetWebsiteRoutes(hostnames []string, target RouteTarget) {
+	target.compiledBotPage = CompileBotPage(target.BotPage)
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	for _, host := range hostnames {
@@ -148,7 +152,19 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. SPA Fallback: Serve index.html
+	// 4. SPA Fallback: Serve bot page for matching crawlers, otherwise index.html
+	if target.compiledBotPage != nil && target.compiledBotPage.IsBot(r.UserAgent()) {
+		botPath := filepath.Join(dir, target.compiledBotPage.File())
+		if botBytes, err := os.ReadFile(botPath); err == nil {
+			w.Header().Add("Vary", "User-Agent")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(botBytes)
+			return
+		}
+	}
+
 	indexPath := filepath.Join(dir, "index.html")
 	indexBytes, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -164,6 +180,9 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if target.compiledBotPage != nil {
+		w.Header().Add("Vary", "User-Agent")
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.WriteHeader(http.StatusOK)
